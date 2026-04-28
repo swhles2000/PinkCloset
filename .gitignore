@@ -1,0 +1,36 @@
+# Java / Maven
+target/
+*.class
+*.jar
+*.war
+*.ear
+*.log
+
+# IDE
+.idea/
+*.iml
+.vscode/
+*.swp
+*.swo
+
+# Node / Frontend
+frontend/node_modules/
+frontend/dist/
+
+# Uploads (user uploaded images)
+uploads/
+
+# OS
+Thumbs.db
+.DS_Store
+desktop.ini
+
+# WorkBuddy
+.workbuddy/
+
+# Env / Secrets
+*.env
+
+# Temp files
+gh_cookies.txt
+create_repo.json

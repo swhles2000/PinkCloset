@@ -1,0 +1,41 @@
+spring:
+  # ──────────────────────────────
+  #  数据源配置
+  # ──────────────────────────────
+  datasource:
+    url: jdbc:mysql://localhost:3306/pink_closet_db?useSSL=false&serverTimezone=UTC&characterEncoding=utf8&allowPublicKeyRetrieval=true
+    username: root
+    password: 123456
+    driver-class-name: com.mysql.cj.jdbc.Driver
+
+  # ──────────────────────────────
+  #  文件上传限制
+  # ──────────────────────────────
+  servlet:
+    multipart:
+      max-file-size: 10MB
+      max-request-size: 20MB
+
+# ──────────────────────────────
+#  MyBatis Plus
+# ──────────────────────────────
+mybatis-plus:
+  configuration:
+    log-impl: org.apache.ibatis.logging.stdout.StdOutImpl   # 开发时打印 SQL，生产可注释
+    map-underscore-to-camel-case: true                       # 下划线自动转驼峰
+  global-config:
+    db-config:
+      id-type: auto                                          # 主键自增
+
+# ──────────────────────────────
+#  服务器端口
+# ──────────────────────────────
+server:
+  port: 8080
+
+# ──────────────────────────────
+#  图片上传本地存储路径（Windows 示例）
+#  启动后图片保存在此目录，前端通过 /uploads/** 访问
+# ──────────────────────────────
+upload:
+  path: D:/JavaProject/Clothes/uploads/

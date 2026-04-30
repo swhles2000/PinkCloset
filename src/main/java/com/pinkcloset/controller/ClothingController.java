@@ -23,7 +23,8 @@ import java.util.UUID;
  *
  * GET    /api/clothes              获取衣物列表（可按 category 筛选）
  * POST   /api/clothes              上传衣物（含图片）
- * DELETE /api/clothes/{id}         删除衣物
+ * PUT    /api/clothes/{id}         修改衣物信息（名称、分类、颜色、风格、图片）
+ * DELETE /api/clothes/{id}         软删除衣物（普通用户）
  */
 @Slf4j
 @RestController
@@ -43,13 +44,18 @@ public class ClothingController {
 
     // ─────────────────────────────────────────────────
     //  GET /api/clothes  获取衣物列表
-    //  可选参数：category（TOP / BOTTOM / SHOES / ACCESSORY）
+    //  必传参数：userId；可选参数：category
+    //  @TableLogic 自动过滤 deleted=1 的记录
     // ─────────────────────────────────────────────────
     @GetMapping
     public Result<List<ClothingItem>> list(
+            @RequestParam Long userId,
             @RequestParam(required = false) String category) {
 
         LambdaQueryWrapper<ClothingItem> wrapper = new LambdaQueryWrapper<>();
+
+        // 按 userId 隔离数据（userId=0 返回公共数据）
+        wrapper.eq(ClothingItem::getUserId, userId);
 
         // 若传入分类参数则进行过滤
         if (StringUtils.hasText(category)) {
@@ -69,13 +75,15 @@ public class ClothingController {
     // ─────────────────────────────────────────────────
     @PostMapping
     public Result<ClothingItem> upload(
-            @RequestParam("name")           String name,
-            @RequestParam("category")       String category,
-            @RequestParam(value = "color",  required = false) String color,
-            @RequestParam(value = "style",  required = false) String style,
-            @RequestParam(value = "image",  required = false) MultipartFile image) {
+            @RequestParam("userId")          Long userId,
+            @RequestParam("name")            String name,
+            @RequestParam("category")        String category,
+            @RequestParam(value = "color",   required = false) String color,
+            @RequestParam(value = "style",   required = false) String style,
+            @RequestParam(value = "image",   required = false) MultipartFile image) {
 
         ClothingItem item = new ClothingItem();
+        item.setUserId(userId);
         item.setName(name);
         item.setCategory(category.toUpperCase());
         item.setColor(color);
@@ -98,22 +106,57 @@ public class ClothingController {
     }
 
     // ─────────────────────────────────────────────────
-    //  DELETE /api/clothes/{id}  删除衣物
+    //  PUT /api/clothes/{id}  修改衣物信息
+    //  支持修改 name、category、color、style，可选更新图片
+    // ─────────────────────────────────────────────────
+    @PutMapping("/{id}")
+    public Result<ClothingItem> update(
+            @PathVariable Long id,
+            @RequestParam("name")            String name,
+            @RequestParam("category")        String category,
+            @RequestParam(value = "color",   required = false) String color,
+            @RequestParam(value = "style",   required = false) String style,
+            @RequestParam(value = "image",   required = false) MultipartFile image) {
+
+        // 先查询衣物是否存在（且未被删除）
+        ClothingItem existing = clothingItemMapper.selectById(id);
+        if (existing == null) {
+            return Result.fail("衣物不存在或已被删除");
+        }
+
+        existing.setName(name);
+        existing.setCategory(category.toUpperCase());
+        existing.setColor(color);
+        existing.setStyle(style);
+
+        // 如果上传了新图片，替换原有图片
+        if (image != null && !image.isEmpty()) {
+            try {
+                String imageUrl = saveImage(image);
+                existing.setImageUrl(imageUrl);
+            } catch (IOException e) {
+                log.error("图片上传失败", e);
+                return Result.fail("图片上传失败：" + e.getMessage());
+            }
+        }
+
+        clothingItemMapper.updateById(existing);
+        log.info("衣物修改成功，ID={}", id);
+        return Result.success("修改成功", existing);
+    }
+
+    // ─────────────────────────────────────────────────
+    //  DELETE /api/clothes/{id}  软删除衣物（普通用户）
+    //  使用原生 SQL 设置 deleted=1，不走 MyBatis Plus 的逻辑删除
     // ─────────────────────────────────────────────────
     @DeleteMapping("/{id}")
     public Result<Void> delete(@PathVariable Long id) {
-        ClothingItem item = clothingItemMapper.selectById(id);
-        if (item == null) {
-            return Result.fail("衣物不存在");
+        // 使用原生 SQL 软删除，绕过 @TableLogic
+        int rows = clothingItemMapper.softDeleteById(id);
+        if (rows == 0) {
+            return Result.fail("衣物不存在或已被删除");
         }
-
-        // 同时删除本地图片文件
-        if (StringUtils.hasText(item.getImageUrl())) {
-            deleteLocalFile(item.getImageUrl());
-        }
-
-        clothingItemMapper.deleteById(id);
-        log.info("衣物删除成功，ID={}", id);
+        log.info("衣物软删除成功，ID={}", id);
         return Result.success("删除成功", null);
     }
 
@@ -146,21 +189,5 @@ public class ClothingController {
 
         // 返回前端访问路径
         return "/uploads/" + datePart + "/" + fileName;
-    }
-
-    /**
-     * 删除本地图片文件
-     * imageUrl 格式：/uploads/2026/04/xxx.jpg
-     */
-    private void deleteLocalFile(String imageUrl) {
-        // 去掉开头 "/" 拼接本地路径
-        String relativePath = imageUrl.startsWith("/") ? imageUrl.substring(1) : imageUrl;
-        // uploadPath 已是根目录（含尾部斜线），只需替换 uploads/ 前缀
-        String localPath = uploadPath + relativePath.replaceFirst("^uploads/", "");
-        File file = new File(localPath);
-        if (file.exists()) {
-            boolean deleted = file.delete();
-            log.info("删除图片文件 {} {}", localPath, deleted ? "成功" : "失败");
-        }
     }
 }

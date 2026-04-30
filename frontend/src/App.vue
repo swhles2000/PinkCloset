@@ -5,8 +5,8 @@
     淡粉色主题在此处的 <style> 里全局定义
   -->
   <div id="pink-app">
-    <!-- ══════ 顶部导航栏 ══════ -->
-    <header class="app-header">
+    <!-- ══════ 顶部导航栏（登录/注册页不显示） ══════ -->
+    <header v-if="showNav" class="app-header">
       <div class="header-inner">
         <!-- 品牌标志 -->
         <div class="brand">
@@ -24,23 +24,96 @@
             🗂 我的衣橱
           </router-link>
         </nav>
+
+        <!-- 用户信息 + 个人中心 + 退出 -->
+        <div v-if="currentUser" class="user-bar">
+          <div class="nav-avatar" @click="$router.push('/profile')">
+            <img v-if="currentUser.avatar" :src="currentUser.avatar" class="nav-avatar-img" alt="头像" />
+            <span v-else class="nav-avatar-emoji">🌸</span>
+          </div>
+          <router-link to="/profile" class="user-name user-name-link">{{ currentUser.name }}</router-link>
+          <button class="logout-btn" @click="logout" title="退出登录">退出</button>
+        </div>
       </div>
     </header>
 
     <!-- ══════ 页面内容区域 ══════ -->
-    <main class="app-main">
+    <main :class="showNav ? 'app-main' : 'app-main-full'">
       <router-view />
     </main>
 
-    <!-- ══════ 页脚 ══════ -->
-    <footer class="app-footer">
-      <span>🌸 Made with love · PinkCloset</span>
+    <!-- ══════ 页脚（登录/注册页不显示） ══════ -->
+    <footer v-if="showNav" class="app-footer">
+      <span>🌸 燕燕公主私厨 · PinkCloset</span>
     </footer>
+
+    <!-- ══════ 服务宕机可爱提示 ══════ -->
+    <Teleport to="body">
+      <Transition name="server-down-fade">
+        <div v-if="serverDown" class="server-down-overlay" @click.self="serverDown = false">
+          <div class="server-down-card">
+            <div class="server-down-icon">🥺</div>
+            <h2 class="server-down-title">哎呀，服务走丢了~</h2>
+            <p class="server-down-desc">
+              后端服务好像没有启动呢，请先启动服务再试试吧！<br>
+              <span class="server-down-hint">小贴士：在终端运行 Spring Boot 应用即可启动哦~</span>
+            </p>
+            <button class="server-down-btn" @click="serverDown = false">
+              我知道了 💕
+            </button>
+          </div>
+        </div>
+      </Transition>
+    </Teleport>
   </div>
 </template>
 
 <script setup>
-// App.vue 本身不需要业务逻辑，仅作布局容器
+import { ref, computed, onMounted } from 'vue'
+import { useRouter, useRoute } from 'vue-router'
+
+const router      = useRouter()
+const route       = useRoute()
+const currentUser = ref(null)
+const serverDown  = ref(false)
+
+// 登录/注册/管理员页面不显示普通导航栏和页脚
+const showNav = computed(() =>
+  route.name !== 'login' &&
+  route.name !== 'register' &&
+  route.name !== 'adminLogin' &&
+  route.name !== 'adminPanel'
+)
+
+onMounted(() => {
+  const raw = localStorage.getItem('pc_user')
+  if (raw) currentUser.value = JSON.parse(raw)
+  // 监听登录状态变化（login 页面登录成功后触发）
+  window.addEventListener('user-login', () => {
+    const raw2 = localStorage.getItem('pc_user')
+    if (raw2) currentUser.value = JSON.parse(raw2)
+  })
+  // 监听注销事件（profile 页注销账号后触发）
+  window.addEventListener('user-logout', () => {
+    currentUser.value = null
+  })
+  // 监听头像更新事件（profile 页上传头像后触发）
+  window.addEventListener('user-avatar-updated', (e) => {
+    if (currentUser.value) {
+      currentUser.value.avatar = e.detail
+    }
+  })
+  // 监听服务宕机事件（api.js 拦截器触发）
+  window.addEventListener('server-down', () => {
+    serverDown.value = true
+  })
+})
+
+function logout() {
+  localStorage.removeItem('pc_user')
+  currentUser.value = null
+  router.push('/login')
+}
 </script>
 
 <style>
@@ -159,6 +232,66 @@ body {
   gap: 8px;
 }
 
+/* 用户栏 */
+.user-bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-left: 16px;
+}
+.nav-avatar {
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  overflow: hidden;
+  cursor: pointer;
+  flex-shrink: 0;
+  box-shadow: 0 2px 6px rgba(255,105,135,0.15);
+}
+.nav-avatar-img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+.nav-avatar-emoji {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  font-size: 16px;
+  background: linear-gradient(135deg, var(--pink-200), var(--pink-100));
+  border-radius: 50%;
+}
+.user-name {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--pink-dark);
+}
+.user-name-link {
+  text-decoration: none;
+  transition: var(--transition-fast);
+}
+.user-name-link:hover {
+  opacity: 0.75;
+  text-decoration: underline;
+}
+.logout-btn {
+  font-size: 12px;
+  padding: 4px 12px;
+  border-radius: 999px;
+  border: 1.5px solid var(--pink-200);
+  background: transparent;
+  color: var(--text-muted);
+  cursor: pointer;
+  transition: var(--transition-fast);
+}
+.logout-btn:hover {
+  background: var(--pink-50);
+  color: var(--pink-400);
+  border-color: var(--pink-300);
+}
+
 .nav-item {
   text-decoration: none;
   color: var(--text-secondary);
@@ -189,6 +322,12 @@ body {
   margin: 0 auto;
   padding: 32px 24px 64px;
   min-height: calc(100vh - 130px);
+}
+
+/* 登录/注册页面：全屏无边距 */
+.app-main-full {
+  min-height: 100vh;
+  padding: 0;
 }
 
 /* ================================================================
@@ -310,6 +449,108 @@ body {
 
 .fade-in-up {
   animation: fadeInUp 0.4s ease both;
+}
+
+/* ================================================================
+   服务宕机可爱提示
+   ================================================================ */
+.server-down-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(60, 20, 40, 0.4);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 99999;
+  padding: 24px;
+}
+
+.server-down-card {
+  background: white;
+  border-radius: 24px;
+  padding: 40px 36px 32px;
+  text-align: center;
+  max-width: 380px;
+  width: 100%;
+  box-shadow: 0 20px 60px rgba(255, 105, 135, 0.2);
+}
+
+.server-down-icon {
+  font-size: 72px;
+  margin-bottom: 16px;
+  animation: serverDownBounce 1.5s ease infinite;
+}
+
+@keyframes serverDownBounce {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-12px); }
+}
+
+.server-down-title {
+  font-size: 22px;
+  font-weight: 700;
+  background: linear-gradient(135deg, var(--pink-400), var(--pink-dark));
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+  margin-bottom: 12px;
+}
+
+.server-down-desc {
+  font-size: 14px;
+  color: var(--text-secondary);
+  line-height: 1.8;
+  margin-bottom: 24px;
+}
+
+.server-down-hint {
+  font-size: 12px;
+  color: var(--text-muted);
+  display: block;
+  margin-top: 6px;
+}
+
+.server-down-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 12px 28px;
+  border-radius: 999px;
+  border: none;
+  background: linear-gradient(135deg, var(--pink-300), var(--pink-400));
+  color: white;
+  font-size: 15px;
+  font-weight: 600;
+  cursor: pointer;
+  box-shadow: 0 4px 16px rgba(255, 105, 135, 0.35);
+  transition: all 0.2s ease;
+}
+
+.server-down-btn:hover {
+  transform: translateY(-2px) scale(1.03);
+  box-shadow: 0 6px 20px rgba(255, 105, 135, 0.45);
+}
+
+.server-down-btn:active {
+  transform: translateY(0) scale(0.98);
+}
+
+/* 过渡动画 */
+.server-down-fade-enter-active {
+  transition: all 0.35s ease;
+}
+.server-down-fade-leave-active {
+  transition: all 0.25s ease;
+}
+.server-down-fade-enter-from,
+.server-down-fade-leave-to {
+  opacity: 0;
+}
+.server-down-fade-enter-from .server-down-card,
+.server-down-fade-leave-to .server-down-card {
+  transform: scale(0.9) translateY(20px);
 }
 
 /* ================================================================

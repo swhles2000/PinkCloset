@@ -60,6 +60,9 @@
           <img :src="getImgSrc(item)" :alt="item.name" class="item-img" />
           <!-- 悬停操作层 -->
           <div class="item-overlay">
+            <button class="overlay-btn btn-edit" @click="openEditModal(item)">
+              ✏️ 编辑
+            </button>
             <button class="overlay-btn btn-danger" @click="confirmDelete(item)">
               🗑 删除
             </button>
@@ -191,6 +194,107 @@
       </div>
     </div>
 
+    <!-- ══════ 编辑弹窗 ══════ -->
+    <div v-if="showEditModal" class="modal-overlay" @click.self="closeEditModal">
+      <div class="modal-box card fade-in-up">
+
+        <div class="modal-header">
+          <h3>✏️ 修改衣物信息</h3>
+          <button class="modal-close" @click="closeEditModal">✕</button>
+        </div>
+
+        <div class="modal-body">
+
+          <!-- 当前图片预览 + 更换 -->
+          <div
+            class="upload-zone"
+            :class="{ 'upload-zone-active': editDragOver }"
+            @click="editFileRef?.click()"
+            @dragover.prevent="editDragOver = true"
+            @dragleave="editDragOver = false"
+            @drop.prevent="handleEditDrop"
+          >
+            <template v-if="editPreviewUrl">
+              <img :src="editPreviewUrl" class="upload-preview" alt="预览" />
+              <button class="remove-preview" @click.stop="clearEditPreview">✕</button>
+            </template>
+            <template v-else>
+              <div class="upload-icon">📷</div>
+              <p class="upload-hint">点击或拖拽新图片更换</p>
+              <p class="upload-hint-sub">不选择则保留原图</p>
+            </template>
+          </div>
+          <input
+            ref="editFileRef"
+            type="file"
+            accept="image/*"
+            style="display:none"
+            @change="handleEditFileChange"
+          />
+
+          <!-- 表单字段 -->
+          <div class="form-grid">
+            <div class="form-item">
+              <label class="form-label">衣物名称 <span class="required">*</span></label>
+              <input
+                v-model="editForm.name"
+                class="form-input"
+                placeholder="如：白色棉质T恤"
+                maxlength="50"
+              />
+            </div>
+
+            <div class="form-item">
+              <label class="form-label">分类 <span class="required">*</span></label>
+              <select v-model="editForm.category" class="form-input form-select">
+                <option value="">请选择分类</option>
+                <option value="TOP">👕 上衣</option>
+                <option value="BOTTOM">👖 下装</option>
+                <option value="SHOES">👟 鞋子</option>
+                <option value="ACCESSORY">💍 配饰</option>
+              </select>
+            </div>
+
+            <div class="form-item">
+              <label class="form-label">主色调</label>
+              <input
+                v-model="editForm.color"
+                class="form-input"
+                placeholder="如：粉色、白色"
+                maxlength="20"
+              />
+            </div>
+
+            <div class="form-item">
+              <label class="form-label">风格标签</label>
+              <input
+                v-model="editForm.style"
+                class="form-input"
+                placeholder="如：甜美, 休闲（逗号分隔）"
+                maxlength="100"
+              />
+            </div>
+          </div>
+
+          <!-- 错误提示 -->
+          <div v-if="editError" class="error-tip">⚠️ {{ editError }}</div>
+        </div>
+
+        <div class="modal-footer">
+          <button class="btn btn-ghost" @click="closeEditModal">取消</button>
+          <button
+            class="btn btn-primary"
+            :disabled="editSaving"
+            @click="submitEdit"
+          >
+            <span v-if="editSaving">保存中…</span>
+            <span v-else>保存修改 ✨</span>
+          </button>
+        </div>
+
+      </div>
+    </div>
+
     <!-- ══════ 删除确认弹窗 ══════ -->
     <div v-if="deleteTarget" class="modal-overlay" @click.self="deleteTarget = null">
       <div class="modal-box card fade-in-up" style="max-width:380px; text-align:center">
@@ -198,7 +302,7 @@
           <div style="font-size:48px;margin-bottom:12px">🗑</div>
           <h3 style="font-size:17px;margin-bottom:8px">确认删除？</h3>
           <p style="color:var(--text-muted);font-size:14px">
-            将永久删除「{{ deleteTarget.name }}」，无法恢复哦
+            将删除「{{ deleteTarget.name }}」，你可以联系管理员恢复哦~
           </p>
         </div>
         <div class="modal-footer" style="justify-content:center;gap:16px">
@@ -213,7 +317,7 @@
 
 <script setup>
 import { ref, computed, onMounted } from 'vue'
-import { getClothes, uploadClothes, deleteClothes } from '../api.js'
+import { getClothes, uploadClothes, deleteClothes, updateClothing } from '../api.js'
 
 // ─────────────────────────────────────────────────
 //  分类配置
@@ -242,7 +346,9 @@ const getCatLabel = (cat) => catMap[cat] || cat
 const allClothes     = ref([])
 const activeCategory = ref('ALL')
 const showUploadModal = ref(false)
+const showEditModal  = ref(false)
 const deleteTarget   = ref(null)
+const editTarget     = ref(null)  // 当前正在编辑的衣物对象
 
 // 上传表单
 const form = ref({ name: '', category: '', color: '', style: '' })
@@ -252,6 +358,15 @@ const previewUrl   = ref('')
 const dragOver     = ref(false)
 const uploading    = ref(false)
 const uploadError  = ref('')
+
+// 编辑表单
+const editForm       = ref({ name: '', category: '', color: '', style: '' })
+const editFileRef    = ref(null)
+const editFile       = ref(null)
+const editPreviewUrl = ref('')
+const editDragOver   = ref(false)
+const editSaving     = ref(false)
+const editError      = ref('')
 
 // ─────────────────────────────────────────────────
 //  计算属性
@@ -384,6 +499,104 @@ async function doDelete() {
     console.error('删除失败', e)
   } finally {
     deleteTarget.value = null
+  }
+}
+
+// ─────────────────────────────────────────────────
+//  编辑衣物
+// ─────────────────────────────────────────────────
+function openEditModal(item) {
+  editTarget.value = item
+  editForm.value = {
+    name: item.name || '',
+    category: item.category || '',
+    color: item.color || '',
+    style: item.style || ''
+  }
+  // 显示当前图片
+  editPreviewUrl.value = item.imageUrl || ''
+  editFile.value = null
+  editError.value = ''
+  showEditModal.value = true
+}
+
+function closeEditModal() {
+  showEditModal.value = false
+  editTarget.value = null
+  editFile.value = null
+  editPreviewUrl.value = ''
+  editError.value = ''
+  if (editFileRef.value) editFileRef.value.value = ''
+}
+
+function handleEditFileChange(e) {
+  const file = e.target.files?.[0]
+  if (file) {
+    editFile.value = file
+    editPreviewUrl.value = URL.createObjectURL(file)
+  }
+}
+
+function handleEditDrop(e) {
+  editDragOver.value = false
+  const file = e.dataTransfer.files?.[0]
+  if (file && file.type.startsWith('image/')) {
+    editFile.value = file
+    editPreviewUrl.value = URL.createObjectURL(file)
+  }
+}
+
+function clearEditPreview() {
+  editFile.value = null
+  // 恢复显示原图
+  if (editTarget.value?.imageUrl) {
+    editPreviewUrl.value = editTarget.value.imageUrl
+  } else {
+    editPreviewUrl.value = ''
+  }
+  if (editFileRef.value) editFileRef.value.value = ''
+}
+
+async function submitEdit() {
+  editError.value = ''
+
+  if (!editForm.value.name.trim()) {
+    editError.value = '请输入衣物名称'
+    return
+  }
+  if (!editForm.value.category) {
+    editError.value = '请选择衣物分类'
+    return
+  }
+
+  editSaving.value = true
+  try {
+    const fd = new FormData()
+    fd.append('name', editForm.value.name.trim())
+    fd.append('category', editForm.value.category)
+    if (editForm.value.color)  fd.append('color', editForm.value.color.trim())
+    if (editForm.value.style)  fd.append('style', editForm.value.style.trim())
+    // 只在用户选择了新图片时才传 image
+    if (editFile.value) fd.append('image', editFile.value)
+
+    const res = await updateClothing(editTarget.value.id, fd)
+    if (res.code === 200) {
+      // 用返回的最新数据更新本地列表
+      const idx = allClothes.value.findIndex(c => c.id === editTarget.value.id)
+      if (idx !== -1) {
+        allClothes.value[idx] = { ...allClothes.value[idx], ...res.data }
+      }
+      // 通知其他页面刷新
+      window.dispatchEvent(new CustomEvent('clothes-updated'))
+      closeEditModal()
+    } else {
+      editError.value = res.message || '修改失败'
+    }
+  } catch (e) {
+    editError.value = '网络错误，请重试'
+    console.error(e)
+  } finally {
+    editSaving.value = false
   }
 }
 
@@ -562,6 +775,7 @@ function formatDate(dt) {
   display: flex;
   align-items: center;
   justify-content: center;
+  gap: 10px;
   opacity: 0;
   transition: opacity 0.22s ease;
 }
@@ -578,12 +792,24 @@ function formatDate(dt) {
   cursor: pointer;
   border: none;
   background: white;
-  color: #e53e3e;
   box-shadow: 0 2px 8px rgba(0,0,0,0.12);
   transition: var(--transition-fast);
 }
 
-.overlay-btn:hover {
+.overlay-btn.btn-edit {
+  color: var(--pink-dark);
+}
+
+.overlay-btn.btn-edit:hover {
+  background: var(--pink-100);
+  transform: scale(1.05);
+}
+
+.overlay-btn.btn-danger {
+  color: #e53e3e;
+}
+
+.overlay-btn.btn-danger:hover {
   background: #fee2e2;
   transform: scale(1.05);
 }

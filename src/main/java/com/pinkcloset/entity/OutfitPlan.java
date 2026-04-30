@@ -16,6 +16,9 @@ public class OutfitPlan {
     @TableId(type = IdType.AUTO)
     private Long id;
 
+    /** 所属用户ID（0=公共/旧数据） */
+    private Long userId;
+
     /** 搭配名称 */
     private String name;
 
@@ -37,4 +40,8 @@ public class OutfitPlan {
     /** 创建时间 */
     @TableField(fill = FieldFill.INSERT)
     private LocalDateTime createTime;
+
+    /** 软删除标志：0=正常，1=已删除 */
+    @TableLogic
+    private Integer deleted;
 }

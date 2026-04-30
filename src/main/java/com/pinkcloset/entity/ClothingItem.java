@@ -22,6 +22,9 @@ public class ClothingItem {
     @TableId(type = IdType.AUTO)
     private Long id;
 
+    /** 所属用户ID（0=公共/旧数据） */
+    private Long userId;
+
     /** 衣物名称，如"白色棉质T恤" */
     private String name;
 
@@ -43,4 +46,8 @@ public class ClothingItem {
     /** 上传时间（自动填充） */
     @TableField(fill = FieldFill.INSERT)
     private LocalDateTime createTime;
+
+    /** 软删除标志：0=正常，1=已删除 */
+    @TableLogic
+    private Integer deleted;
 }
